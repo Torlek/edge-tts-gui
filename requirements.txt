@@ -1,0 +1,3 @@
+customtkinter
+edge-tts>=6.1.8
+just_playback>=0.2.4
