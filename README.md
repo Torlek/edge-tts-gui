@@ -2,8 +2,8 @@
 
 A simple graphical user interface (GUI) application built with Python and CustomTkinter that allows you to generate Text-to-Speech (TTS) audio using Microsoft Edge's online TTS service (`edge-tts`) and play it back locally using `just_playback`.
 
-![Edge TTS GUI Application Screenshot](images/Screenshot dark.png)
-![Edge TTS GUI Application Screenshot](images/Screenshot light.png)
+![Edge TTS GUI Application Screenshot](images/Screenshotdark.png)
+![Edge TTS GUI Application Screenshot](images/Screenshotlight.png)
 
 ## Features
 
