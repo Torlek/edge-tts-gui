@@ -43,8 +43,8 @@ Follow the steps for your specific operating system.
     ```
 3.  **Clone Repository:** Open a terminal and run:
     ```bash
-    git clone <repository-url> # Replace <repository-url> with the actual URL
-    cd edge-tts-gui # Or the name you cloned it into
+    git clone https://github.com/Ashfield-dev/edge-tts-gui.git
+    cd edge-tts-gui
     ```
 4.  **Create & Activate Virtual Environment:**
     ```bash
@@ -68,8 +68,8 @@ Follow the steps for your specific operating system.
     ```
 3.  **Clone Repository:** Open a terminal and run:
     ```bash
-    git clone <repository-url> # Replace <repository-url> with the actual URL
-    cd edge-tts-gui # Or the name you cloned it into
+    git clone https://github.com/Ashfield-dev/edge-tts-gui.git
+    cd edge-tts-gui
     ```
 4.  **Create & Activate Virtual Environment:**
     ```bash
@@ -84,14 +84,14 @@ Follow the steps for your specific operating system.
 ### **Windows**
 
 1.  **Install Python:** Download and install Python from [python.org](https://www.python.org/). **Make sure to check the box "Add Python X.X to PATH" during installation.** This usually includes `pip` and `venv`.
-2.  **Install Git (Optional but recommended):** Download and install Git from [git-scm.com](https://git-scm.com/). This allows you to use the `git clone` command. Alternatively, download the project ZIP file from the repository page and extract it.
+2.  **Install Git (Optional but recommended):** Download and install Git from [git-scm.com](https://git-scm.com/). This allows you to use the `git clone` command. Alternatively, download the project ZIP file from the repository page (`https://github.com/Ashfield-dev/edge-tts-gui`) and extract it.
 3.  **Clone or Download Repository:**
     *   Using Git (Open Command Prompt or PowerShell):
         ```bash
-        git clone <repository-url> # Replace <repository-url> with the actual URL
-        cd edge-tts-gui # Or the name you cloned/extracted it into
+        git clone https://github.com/Ashfield-dev/edge-tts-gui.git
+        cd edge-tts-gui
         ```
-    *   Or download and extract the ZIP, then navigate to the folder using `cd` in Command Prompt/PowerShell.
+    *   Or download and extract the ZIP, then navigate to the `edge-tts-gui` folder using `cd` in Command Prompt/PowerShell.
 4.  **Create & Activate Virtual Environment:** Open Command Prompt or PowerShell in the project directory:
     ```bash
     python -m venv venv
@@ -120,8 +120,8 @@ Follow the steps for your specific operating system.
     ```
 4.  **Clone Repository:** Open Terminal and run:
     ```bash
-    git clone <repository-url> # Replace <repository-url> with the actual URL
-    cd edge-tts-gui # Or the name you cloned it into
+    git clone https://github.com/Ashfield-dev/edge-tts-gui.git
+    cd edge-tts-gui
     ```
 5.  **Create & Activate Virtual Environment:**
     ```bash
@@ -135,7 +135,7 @@ Follow the steps for your specific operating system.
 
 ## Running the Application
 
-1.  Make sure you are in the project directory (`edge-tts-gui` or similar) in your Terminal or Command Prompt.
+1.  Make sure you are in the `edge-tts-gui` directory in your Terminal or Command Prompt.
 2.  Ensure your virtual environment (`venv`) is activated (you should see `(venv)` at the start of your prompt).
 3.  Run the script:
     ```bash
@@ -165,3 +165,7 @@ Follow the steps for your specific operating system.
 *   **PermissionError Deleting Temp File:** This can occasionally happen if the audio player hasn't released the file lock quickly enough. The script tries multiple times, but if it persists, restarting the app usually resolves it.
 *   **`git` command not found:** Ensure Git is installed correctly for your OS and that its location is included in your system's PATH environment variable.
 *   **`python` or `pip` command not found:** Ensure Python is installed correctly and added to your system's PATH (especially important during Windows installation). On Linux/macOS, you might need to use `python3` and `pip3` explicitly if `python` defaults to Python 2.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
