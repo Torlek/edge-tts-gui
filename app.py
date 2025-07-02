@@ -142,6 +142,9 @@ class EdgeTTSApp(ctk.CTk):
         self.textbox.bind("<FocusIn>", self._on_textbox_focus_in)
         self.textbox.bind("<FocusOut>", self._on_textbox_focus_out)
 
+        # Detect text changes
+        self.textbox.bind("<KeyRelease>", self._on_textbox_change)
+
         # --- Controls Area (Voice & Adjustments) ---
         # [Rest of the controls setup remains the same as before]
         ctk.CTkLabel(self, text="Voice & Adjustments", font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(10, 0), sticky="w")
@@ -329,6 +332,37 @@ class EdgeTTSApp(ctk.CTk):
         if hasattr(self, 'status_label'):
             self.status_label.configure(text=f"Status: {message}")
 
+    def _on_textbox_change(self, event=None):
+        """Called when text is typed in the textbox to update UI state."""
+        # Use after_idle to ensure the text change is processed first
+        self.after_idle(self._update_ui_after_text_change)
+
+    def _update_ui_after_text_change(self):
+        """Updates UI state after text changes, maintaining current state context."""
+        if not hasattr(self, 'textbox'):
+            return
+
+        current_state = self.check_current_audio_state()
+
+        # Update UI state which will check text and enable/disable generate button
+        self.set_ui_state(current_state)
+
+    def check_current_audio_state(self):
+        """ Determine current state based on existing conditions."""
+        current_state = 'idle'  # Default
+        # Check if we have generated audio
+        if self.audio_file_path and os.path.exists(self.audio_file_path):
+            if self.just_playback_initialized and self.player:
+                if self.player.playing:
+                    current_state = 'playing'
+                elif self.player.paused:
+                    current_state = 'paused'
+                else:
+                    current_state = 'generated'
+            else:
+                current_state = 'generated'
+        return current_state
+
     def set_ui_state(self, state: str):
         """Sets the enabled/disabled state of UI widgets based on application state."""
         is_player_ready = bool(self.just_playback_initialized and self.player)
@@ -343,10 +377,19 @@ class EdgeTTSApp(ctk.CTk):
         can_stop = is_audio_loaded and (is_playing or is_paused)
         can_seek = is_audio_loaded and (is_playing or is_paused)
         can_save = is_audio_loaded and is_idle # Can save only when idle/stopped
+
         voices_loaded = bool(self.voices_dict)
-        # Check actual input text, not placeholder
         has_input_text = bool(self.get_input_text())
-        can_generate = voices_loaded and has_input_text and state not in ['loading', 'generating', 'playing', 'error_no_audio']
+
+        # Add proper voice selection validation
+        selected_voice = self.voice_dropdown.get() if hasattr(self, 'voice_dropdown') else ""
+        has_valid_voice = (voices_loaded and
+                           selected_voice and
+                           selected_voice in self.voices_dict and
+                           "Loading" not in selected_voice and
+                           "No match" not in selected_voice)
+
+        can_generate = has_valid_voice and has_input_text and state not in ['loading', 'generating', 'playing', 'error_no_audio']
         can_load_text = state not in ['loading', 'generating', 'playing', 'error_no_audio']
         controls_active = state not in ['loading', 'generating', 'error_no_audio']
         # Theme switch should always be active
@@ -421,8 +464,9 @@ class EdgeTTSApp(ctk.CTk):
              self.pitch_value_label.configure(text=f"{int(value):+d}Hz")
 
     def voice_selected(self, choice: str):
-        """Callback when a voice is selected from the dropdown (currently does nothing)."""
-        pass # Functionality can be added here if needed
+        """Callback when a voice is selected from the dropdown. Updates the UI state."""
+        current_state = self.check_current_audio_state()
+        self.set_ui_state(current_state)
 
     def _filter_voices(self) -> list[str]:
         """Filters the list of voice display names based on search input."""
@@ -442,6 +486,9 @@ class EdgeTTSApp(ctk.CTk):
             # If no results, display message and disable dropdown
             self.voice_dropdown.configure(values=["No match found"], state=ctk.DISABLED)
             self.voice_dropdown.set("No match found")
+            # Trigger UI update after setting invalid selection
+            current_state = self.check_current_audio_state()
+            self.set_ui_state(current_state)
         else:
             # If results found, update list and enable dropdown
             self.voice_dropdown.configure(values=filtered_voices, state=ctk.NORMAL)
@@ -450,6 +497,10 @@ class EdgeTTSApp(ctk.CTk):
                 self.voice_dropdown.set(current_selection)
             else: # Otherwise, select the first result
                 self.voice_dropdown.set(filtered_voices[0])
+
+            # Trigger UI update after setting new selection
+            current_state = self.check_current_audio_state()
+            self.set_ui_state(current_state)
 
     # --- Asynchronous Operations & Threading ---
     def load_voices_async(self):
