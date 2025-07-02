@@ -1171,10 +1171,9 @@ class EdgeTTSApp(ctk.CTk):
         print("INFO: Cleaning up temporary audio file...")
         self._delete_temp_audio_file()
 
-        print("INFO: Destroying main window...")
-        # Cancel any pending 'after' jobs to prevent errors after destroy
-        for after_id in self.tk.eval('after info').split():
-             self.after_cancel(after_id)
+        # I Removed the problematic after_cancel loop entirely
+        # The _stop_progress_updater() call above already handles the main updater
+        # Got exceptions during the after_cancel call otherwise.
 
         self.destroy() # Close the Tkinter window
 
