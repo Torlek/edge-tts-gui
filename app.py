@@ -1252,7 +1252,7 @@ class EdgeTTSApp(ctk.CTk):
 
         settings = StoredUiState(int(self.rate_slider.get()), int(self.pitch_slider.get()), voice)
         try:
-            with open(CONFIG_PATH, 'w') as f:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(settings.__dict__, f)
             print(f"INFO: Audio settings saved to {CONFIG_PATH}")
         except Exception as e:
