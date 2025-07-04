@@ -626,11 +626,33 @@ class EdgeTTSApp(ctk.CTk):
             self.update_status("❌ Error: No voices could be loaded.")
             self.set_ui_state('error_no_voices') # Specific error state
 
+    def display_audio_task_progress(self, done: int, total: int):
+        """Updates the status label with progress of the audio generation task."""
+        if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+            self.status_label.configure(text=f"Generating audio... ({done}/{total})")
+
+    class ProgressUpdateCaller:
+        def __init__(self, parent, total: int):
+            self.parent = parent
+            self.done = 0
+            self.total = total
+
+        def mark_processed_work(self):
+            """Marks one unit of work as processed and updates the UI."""
+            self.done += 1
+            if hasattr(self.parent, 'display_audio_task_progress'):
+                self.parent.after(0, self.parent.display_audio_task_progress, self.done, self.total)
+
     async def _generate_audio_task(self, text: str, voice_short_name: str, rate_str: str, pitch_str: str):
         """Coroutine to generate audio and save it to a temporary file."""
         tmp_path = None
         try:
-            communicate = edge_tts.Communicate(text=text, voice=voice_short_name, rate=rate_str, pitch=pitch_str)
+            total = len(text.split())
+            progress_caller = self.ProgressUpdateCaller(self, total)
+
+            communicate = edge_tts.Communicate(text=text, voice=voice_short_name, rate=rate_str, pitch=pitch_str,
+                                               mark_word_boundary=progress_caller.mark_processed_work
+                                            )
             # Create a temporary file (it won't be deleted automatically with delete=False)
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", prefix="edge_tts_") as tmp_file:
                 tmp_path = tmp_file.name
