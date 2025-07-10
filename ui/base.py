@@ -145,10 +145,27 @@ class EdgeTTSUi(ctk.CTk):
                                              command=lambda: self.reset_slider("pitch"))
         self.pitch_reset_btn.grid(row=0, column=3, padx=(0, 5), pady=5)
 
-        # --- Generate Button ---
-        self.generate_btn = ctk.CTkButton(self, text="Generate Speech", command=app.start_generate_speech_thread,
-                                          height=40, font=ctk.CTkFont(size=14, weight="bold"), state="disabled")
-        self.generate_btn.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
+        # --- Generate Button Row ---
+        generate_row_frame = ctk.CTkFrame(self, fg_color="transparent")
+        generate_row_frame.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
+        generate_row_frame.grid_columnconfigure(0, weight=1)
+        generate_row_frame.grid_columnconfigure(1, weight=0)
+
+        self.generate_btn = ctk.CTkButton(
+            generate_row_frame,
+            text="Generate Speech",
+            command=self.app.start_generate_speech_thread,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            state="disabled"
+        )
+        self.generate_btn.grid(row=0, column=0, sticky="ew")
+
+        self.auto_play = ctk.CTkCheckBox(
+            generate_row_frame,
+            text="Auto play after generation",
+        )
+        self.auto_play.grid(row=0, column=1, padx=(10, 0), sticky="w")
 
         # --- Player Controls ---
         # [Player controls setup remains the same as before]

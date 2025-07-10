@@ -237,6 +237,8 @@ class EdgeTTSApp():
                 if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
                     self.ui.progress_slider.set(0) # Reset slider
                 self.ui.update_time_label(0, self.audio_duration) # Update time label
+                if self.ui.auto_play.get():
+                    self.ui.toggle_play_pause()
             else:
                 # Invalid duration (0 or negative)
                 print(f"WARN: Audio file loaded but reports invalid duration ({self.audio_duration:.2f}s). File might be corrupted.")
