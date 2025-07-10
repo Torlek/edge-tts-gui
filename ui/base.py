@@ -1,10 +1,13 @@
+from threading import Thread
+from time import sleep
+
 import customtkinter as ctk
 import os
 
 import file_utils.text_files
 from config.settings import StoredUiState
 from config.consts import SEEK_INTERVAL_SECONDS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, TEXTBOX_PLACEHOLDER_TEXT, \
-    TEXTBOX_PLACEHOLDER_COLOR
+    TEXTBOX_PLACEHOLDER_COLOR, AUDIO_UPDATE_INTERVAL_MS
 from tkinter import filedialog
 
 
@@ -13,6 +16,7 @@ class EdgeTTSUi(ctk.CTk):
     def __init__(self, app: 'EdgeTTSApp', ui_state: StoredUiState = StoredUiState()):
         super().__init__()
         self.app = app
+        self.playback_end_watcher = False
 
         # Placeholder state
         self.textbox_placeholder_active = False
@@ -154,10 +158,10 @@ class EdgeTTSUi(ctk.CTk):
         self.rewind_btn = ctk.CTkButton(self.player_frame, text=f"<< {SEEK_INTERVAL_SECONDS}s", width=60,
                                         command=lambda: app.seek_relative(-SEEK_INTERVAL_SECONDS), state="disabled")
         self.rewind_btn.grid(row=0, column=0, padx=(10, 5), pady=10)
-        self.play_pause_btn = ctk.CTkButton(self.player_frame, text="▶ Play", width=80, command=app.toggle_play_pause,
+        self.play_pause_btn = ctk.CTkButton(self.player_frame, text="▶ Play", width=80, command=self.toggle_play_pause,
                                             state="disabled")
         self.play_pause_btn.grid(row=0, column=1, padx=5, pady=10)
-        self.stop_btn = ctk.CTkButton(self.player_frame, text="⏹ Stop", width=80, command=app.stop_audio,
+        self.stop_btn = ctk.CTkButton(self.player_frame, text="⏹ Stop", width=80, command=self.stop_audio,
                                       state="disabled")
         self.stop_btn.grid(row=0, column=2, padx=5, pady=10)
         self.forward_btn = ctk.CTkButton(self.player_frame, text=f"{SEEK_INTERVAL_SECONDS}s >>", width=60,
@@ -181,6 +185,22 @@ class EdgeTTSUi(ctk.CTk):
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Status: Initializing...", height=25, anchor="w")
         self.status_label.grid(row=7, column=0, padx=20, pady=(5, 10), sticky="ew")
+
+    def toggle_play_pause(self):
+        self.app.toggle_play_pause()  # Use app method to handle play/pause logic
+        if not self.playback_end_watcher:
+            self.playback_end_watcher = True
+            self.after(AUDIO_UPDATE_INTERVAL_MS, self.check_if_playback_ended)  # Start watching playback end
+
+    def check_if_playback_ended(self):
+        if self.app.player.active:
+            self.after(AUDIO_UPDATE_INTERVAL_MS, self.check_if_playback_ended)  # Keep checking if playback is still active
+        else:
+            self.stop_audio()
+
+    def stop_audio(self):
+        self.app.stop_audio()
+        self.playback_end_watcher = False  # unblock future watchers
 
     def load_text_from_file(self):
         file_path = filedialog.askopenfilename(
