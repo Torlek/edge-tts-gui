@@ -141,7 +141,7 @@ Follow the steps for your specific operating system.
 2.  Ensure your virtual environment (`venv`) is activated (you should see `(venv)` at the start of your prompt).
 3.  Run the script:
     ```bash
-    python app.py
+    python main.py
     ```
 
 ## Usage
