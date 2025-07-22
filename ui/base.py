@@ -7,7 +7,7 @@ import pyglet
 import file_utils.text_files
 from config.settings import StoredUiState
 from config.consts import SEEK_INTERVAL_SECONDS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, TEXTBOX_PLACEHOLDER_TEXT, \
-    TEXTBOX_PLACEHOLDER_COLOR, AUDIO_UPDATE_INTERVAL_MS
+    TEXTBOX_PLACEHOLDER_COLOR
 from tkinter import filedialog
 
 
@@ -146,27 +146,13 @@ class EdgeTTSUi(ctk.CTk):
                                              command=lambda: self.reset_slider("pitch"))
         self.pitch_reset_btn.grid(row=0, column=3, padx=(0, 5), pady=5)
 
-        # --- Generate Button Row ---
-        generate_row_frame = ctk.CTkFrame(self, fg_color="transparent")
-        generate_row_frame.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
-        generate_row_frame.grid_columnconfigure(0, weight=1)
-        generate_row_frame.grid_columnconfigure(1, weight=0)
+        # --- Generate Button ---
+        self.generate_btn = ctk.CTkButton(self, text="Generate Speech", command=app.start_generate_speech_thread,
+                                          height=40, font=ctk.CTkFont(size=14, weight="bold"), state="disabled")
+        self.generate_btn.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
 
-        self.generate_btn = ctk.CTkButton(
-            generate_row_frame,
-            text="Generate Speech",
-            command=self.app.start_generate_speech_thread,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            state="disabled"
-        )
-        self.generate_btn.grid(row=0, column=0, sticky="ew")
 
-        self.auto_play = ctk.CTkCheckBox(
-            generate_row_frame,
-            text="Auto play after generation",
-        )
-        self.auto_play.grid(row=0, column=1, padx=(10, 0), sticky="w")
+
 
         # --- Player Controls ---
         # [Player controls setup remains the same as before]
@@ -182,17 +168,24 @@ class EdgeTTSUi(ctk.CTk):
         self.stop_btn = ctk.CTkButton(self.player_frame, text="⏹ Stop", width=80, command=self.stop_audio,
                                       state="disabled")
         self.stop_btn.grid(row=0, column=2, padx=5, pady=10)
-        self.forward_btn = ctk.CTkButton(self.player_frame, text=f"{SEEK_INTERVAL_SECONDS}s >>", width=60,
+        self.forward_btn = ctk.CTkButton(self.player_frame, text=f">> {SEEK_INTERVAL_SECONDS}s", width=60,
                                          command=lambda: app.seek_relative(
                                              SEEK_INTERVAL_SECONDS), state="disabled")
         self.forward_btn.grid(row=0, column=3, padx=5, pady=10)
-        self.progress_slider = ctk.CTkSlider(self.player_frame, from_=0, to=100, state="disabled")
-        self.progress_slider.set(0)
-        self.progress_slider.grid(row=0, column=4, padx=5, pady=10, sticky="ew")
-        self.progress_slider.bind("<ButtonRelease-1>", app.seek_audio_on_release)  # On slider release
-        self.time_label = ctk.CTkLabel(self.player_frame, text="00:00 / 00:00", width=90, font=ctk.CTkFont(size=10),
-                                       anchor="e")
-        self.time_label.grid(row=0, column=5, padx=(0, 10), pady=10, sticky="e")
+
+        self.next_btn = ctk.CTkButton(self.player_frame, text="⏭ Next", width=60,
+                                        command=lambda: app.player.next_source(), state="disabled")
+        self.next_btn.grid(row=0, column=4, padx=(5, 10), pady=10)
+
+        self.auto_play = ctk.CTkCheckBox(
+            self.player_frame,
+            text="Auto play after generation",
+        )
+        if ui_state.auto_play:
+            self.auto_play.select()
+        else:
+            self.auto_play.deselect()
+        self.auto_play.grid(row=0, column=5, padx=(10, 0), sticky="w")
 
         # --- Save Button ---
         self.save_btn = ctk.CTkButton(self, text="Save Audio as MP3", command=app.save_audio, height=40,
@@ -398,6 +391,7 @@ class EdgeTTSUi(ctk.CTk):
 
         # Determine capabilities based on state
         can_press_play_pause = is_audio_loaded and state not in ['generating', 'loading']
+        can_skip_next = False # Todo: Implement skip next logic when chunks work
         can_stop = is_audio_loaded
         can_seek = is_audio_loaded
         can_save = is_audio_loaded and is_idle # Can save only when idle/stopped
@@ -421,6 +415,7 @@ class EdgeTTSUi(ctk.CTk):
 
         # Determine widget states (ON/OFF)
         play_pause_btn_state = ctk.NORMAL if can_press_play_pause else ctk.DISABLED
+        next_btn_state = ctk.NORMAL if can_skip_next else ctk.DISABLED
         stop_btn_state = ctk.NORMAL if can_stop else ctk.DISABLED
         seek_btns_state = ctk.NORMAL if can_seek else ctk.DISABLED
         progress_slider_state = ctk.NORMAL if can_seek else ctk.DISABLED
@@ -461,10 +456,10 @@ class EdgeTTSUi(ctk.CTk):
             if hasattr(self, 'save_btn') and self.save_btn.winfo_exists(): self.save_btn.configure(state=save_btn_state)
 
             if hasattr(self, 'play_pause_btn') and self.play_pause_btn.winfo_exists(): self.play_pause_btn.configure(state=play_pause_btn_state, text=play_pause_text)
+            if hasattr(self, 'next_btn') and self.next_btn.winfo_exists(): self.next_btn.configure(state=next_btn_state)
             if hasattr(self, 'stop_btn') and self.stop_btn.winfo_exists(): self.stop_btn.configure(state=stop_btn_state)
             if hasattr(self, 'rewind_btn') and self.rewind_btn.winfo_exists(): self.rewind_btn.configure(state=seek_btns_state)
             if hasattr(self, 'forward_btn') and self.forward_btn.winfo_exists(): self.forward_btn.configure(state=seek_btns_state)
-            if hasattr(self, 'progress_slider') and self.progress_slider.winfo_exists(): self.progress_slider.configure(state=progress_slider_state)
         except Exception as e:
             # This might happen during shutdown if widgets are destroyed
             if "application has been destroyed" not in str(e):
@@ -554,14 +549,6 @@ class EdgeTTSUi(ctk.CTk):
         # Format times
         current_time_str = self.format_time(current_seconds)
         total_time_str = self.format_time(total_seconds)
-        # Update the label if it exists
-        if hasattr(self, 'time_label') and self.time_label.winfo_exists():
-            try:
-                 self.time_label.configure(text=f"{current_time_str} / {total_time_str}")
-            except Exception as e:
-                 # Ignore TclError if widget destroyed during update
-                 if "application has been destroyed" not in str(e):
-                      print(f"WARN: Error updating time label: {e}")
 
 
 

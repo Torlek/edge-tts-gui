@@ -387,7 +387,7 @@ class EdgeTTSApp():
                 self.audio_file_path = None
 
     def on_closing(self):
-        store_ui_state(self.ui.voice_dropdown.get(), int(self.ui.rate_slider.get()), int(self.ui.pitch_slider.get()))
+        store_ui_state(self.ui.voice_dropdown.get(), int(self.ui.rate_slider.get()), int(self.ui.pitch_slider.get()), self.ui.auto_play.get())
 
         """Called when the application window is closed."""
         print("INFO: Closing application...")

@@ -7,13 +7,14 @@ from config.consts import CONFIG_PATH
 
 
 class StoredUiState:
-    def __init__(self, rate: int = 0, pitch: int = 0, voice: str = None, dark: bool = None):
+    def __init__(self, rate: int = 0, pitch: int = 0, voice: str = None, auto_play: bool = False, dark: bool = None) :
         if dark is None:
             dark = ctk.get_appearance_mode() == "Dark"
         self.rate = rate
         self.pitch = pitch
         self.voice = voice
         self.dark = dark
+        self.auto_play = auto_play
 
 
 def load_ui_state() -> StoredUiState:
@@ -27,13 +28,14 @@ def load_ui_state() -> StoredUiState:
                 pitch = int(data.get("pitch", defaults.pitch))
                 voice = data.get("voice", defaults.voice)
                 dark = data.get("dark", defaults.dark)
-                return StoredUiState(rate=rate, pitch=pitch, voice=voice, dark=dark)
+                auto_play = data.get("auto_play", defaults.auto_play)
+                return StoredUiState(rate=rate, pitch=pitch, voice=voice, dark=dark, auto_play=auto_play)
     except Exception as e:
         print(f"WARN: Failed to load audio settings from JSON: {e}")
     return StoredUiState()  # Default settings if file missing or error
 
 
-def store_ui_state(voice:str, rate:int, pitch:int):
+def store_ui_state(voice:str, rate:int, pitch:int, auto_play:bool):
     """Saves the current audio settings to a file."""
     if (not voice
             or voice == "Select Voice"
@@ -42,7 +44,7 @@ def store_ui_state(voice:str, rate:int, pitch:int):
             or voice == "No voices found"):
         voice = None
 
-    settings = StoredUiState(rate, pitch, voice)
+    settings = StoredUiState(rate, pitch, voice, auto_play)
     try:
         with open(CONFIG_PATH, 'w') as f:
             json.dump(settings.__dict__, f)
