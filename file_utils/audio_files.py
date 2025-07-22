@@ -1,5 +1,7 @@
 import os
 from tkinter import filedialog
+import subprocess
+import tempfile
 
 # --- File Operations (Save audio) ---
 class AudioSaver:
@@ -11,8 +13,11 @@ class AudioSaver:
 
     def save_audio(self):
         """Opens a dialog to save the temporary audio file to a user-chosen location."""
-        if not self.audio_file_path or not os.path.exists(self.audio_file_path):
+        if not self.audio_file_path:
              self.ui.update_status("❌ No generated audio file to save."); return
+        for path in self.audio_file_path:
+            if not os.path.exists(path):
+                self.ui.update_status(f"❌ Audio file {path} does not exist."); return
 
         try: # Create default filename from the beginning of the text
             # Use get_input_text to avoid using placeholder as filename basis
@@ -38,13 +43,18 @@ class AudioSaver:
         if file_path: # If the user selected a path and name
             try:
                 print(f"INFO: Copying temp file {self.audio_file_path} to {file_path}")
-                # Copy the temporary file to the chosen destination (binary mode)
-                with open(self.audio_file_path, 'rb') as src, open(file_path, 'wb') as dst:
-                    # Read and write in chunks for potentially large files
-                    while True:
-                        chunk = src.read(8192) # Read 8KB at a time
-                        if not chunk: break # End of file
-                        dst.write(chunk)
+                # Use subprocess to copy the file to the selected location
+                if os.path.exists(file_path):
+                    os.remove(file_path)  # Remove existing file if it exists
+
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as temp_file:
+                    for path in self.audio_file_path:
+                        temp_file.write("file '" + path + "'\n")
+
+
+                result = subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", temp_file.name, "-c", "copy", file_path], capture_output=True, text=True)
+                print(result.stdout)  # Output of the command
+                os.remove(temp_file.name)  # Clean up temp file
                 self.ui.update_status(f"✅ Audio saved successfully to {os.path.basename(file_path)}")
             except IOError as e:
                 print(f"ERROR: IOError during file save: {e}")

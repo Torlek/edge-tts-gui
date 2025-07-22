@@ -26,7 +26,8 @@ A simple graphical user interface (GUI) application built with Python and Custom
 *   **Python:** Version 3.8 or higher recommended.
 *   **pip:** Python package installer (usually comes with Python).
 *   **Network Connection:** Required for `edge-tts` to list voices and generate speech.
-*   **Operating System Specific Dependencies:** `just_playback` relies on system audio libraries. See the installation instructions for your specific OS below.
+*   **ffmpeg:** Required for audio playback on Linux/macOS. On Windows only needed to save the generated Audiofiles.
+*   **Operating System Specific Dependencies:** `pyglet` relies on system audio libraries. See the installation instructions for your specific OS below.
 
 ## Installation
 

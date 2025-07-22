@@ -1,7 +1,6 @@
 
 
 import customtkinter as ctk
-import os
 
 import pyglet
 import file_utils.text_files
@@ -9,6 +8,13 @@ from config.settings import StoredUiState
 from config.consts import SEEK_INTERVAL_SECONDS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, TEXTBOX_PLACEHOLDER_TEXT, \
     TEXTBOX_PLACEHOLDER_COLOR
 from tkinter import filedialog
+
+from enum import Enum
+
+class UIStatusUpdate(Enum):
+    ONLY = 1
+    GENERATOR = 2
+    PLAYBACK = 3
 
 
 class EdgeTTSUi(ctk.CTk):
@@ -18,6 +24,8 @@ class EdgeTTSUi(ctk.CTk):
         self.app = app
         self.playback_end_watcher = False
         self.has_played =False
+        self.previous_generator_message = "" # Used to track last generator message for updates
+        self.previous_player_message = "" # Used to track last player message for updates
 
         # Placeholder state
         self.textbox_placeholder_active = False
@@ -151,14 +159,47 @@ class EdgeTTSUi(ctk.CTk):
                                           height=40, font=ctk.CTkFont(size=14, weight="bold"), state="disabled")
         self.generate_btn.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
 
+        # --- Chunking Options Row ---
+        self.chunk_options_frame = ctk.CTkFrame(self)
+        self.chunk_options_frame.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
+        self.chunk_options_frame.grid_columnconfigure(1, weight=0)
+        self.chunk_options_frame.grid_columnconfigure(3, weight=0)
+        self.chunk_options_frame.grid_columnconfigure(5, weight=1)
 
+        self.split_chunks_checkbox = ctk.CTkCheckBox(self.chunk_options_frame, text="Split TTS generation into chunks", state="disabled",)
+        self.split_chunks_checkbox.grid(row=0, column=0, padx=(0, 10), sticky="w")
+        if ui_state.split:
+            self.split_chunks_checkbox.select()
+        else:
+            self.split_chunks_checkbox.deselect()
 
+        self.min_words_label = ctk.CTkLabel(self.chunk_options_frame, text="Minimum words in chunk:")
+        self.min_words_label.grid(row=0, column=1, padx=(0, 5), sticky="e")
 
+        vcmd = (self.register(lambda P: P.isdigit() or P == ""), "%P")
+        self.min_words_entry = ctk.CTkEntry(self.chunk_options_frame, width=60, validate="key", validatecommand=vcmd,)
+        self.min_words_entry.grid(row=0, column=2, padx=(0, 15), sticky="w")
+        self.min_words_entry.insert(0, ui_state.words_in_chunk)
+
+        self.chunk_sep_label = ctk.CTkLabel(self.chunk_options_frame, text="regex Chunk separator:")
+        self.chunk_sep_label.grid(row=0, column=3, padx=(0, 5), sticky="e")
+
+        self.chunk_sep_entry = ctk.CTkEntry(self.chunk_options_frame, width=80,)
+        self.chunk_sep_entry.grid(row=0, column=4, padx=(0, 0), sticky="w")
+        self.chunk_sep_entry.insert(0, ui_state.chunk_regex)
+
+        self.chunking_widgets = [
+            self.split_chunks_checkbox,
+            self.min_words_label,
+            self.min_words_entry,
+            self.chunk_sep_label,
+            self.chunk_sep_entry,
+
+        ]
         # --- Player Controls ---
         # [Player controls setup remains the same as before]
         self.player_frame = ctk.CTkFrame(self)
-        self.player_frame.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
-        self.player_frame.grid_columnconfigure(4, weight=1)  # Progress slider column expands
+        self.player_frame.grid(row=6, column=0, padx=20, pady=5, sticky="ew")
         self.rewind_btn = ctk.CTkButton(self.player_frame, text=f"<< {SEEK_INTERVAL_SECONDS}s", width=60,
                                         command=lambda: app.seek_relative(-SEEK_INTERVAL_SECONDS), state="disabled")
         self.rewind_btn.grid(row=0, column=0, padx=(10, 5), pady=10)
@@ -190,11 +231,11 @@ class EdgeTTSUi(ctk.CTk):
         # --- Save Button ---
         self.save_btn = ctk.CTkButton(self, text="Save Audio as MP3", command=app.save_audio, height=40,
                                       font=ctk.CTkFont(size=14), state="disabled")
-        self.save_btn.grid(row=6, column=0, padx=20, pady=5, sticky="ew")
+        self.save_btn.grid(row=7, column=0, padx=20, pady=5, sticky="ew")
 
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Status: Initializing...", height=25, anchor="w")
-        self.status_label.grid(row=7, column=0, padx=20, pady=(5, 10), sticky="ew")
+        self.status_label.grid(row=8, column=0, padx=20, pady=(5, 10), sticky="ew")
 
     def toggle_play_pause(self):
         self.app.toggle_play_pause()  # Use app method to handle play/pause logic
@@ -360,9 +401,17 @@ class EdgeTTSUi(ctk.CTk):
             print("WARN: Theme switch not available for state update yet, rescheduling.")
 
    # --- UI & State Update Methods ---
-    def update_status(self, message: str):
+    def update_status(self, message: str, type: UIStatusUpdate = UIStatusUpdate.ONLY):
         """Updates the text in the bottom status bar."""
         if hasattr(self, 'status_label'):
+            if type == UIStatusUpdate.GENERATOR:
+                self.previous_generator_message = message
+            elif type == UIStatusUpdate.PLAYBACK:
+                self.previous_player_message = message
+            else:
+                self.previous_generator_message = message
+                self.previous_player_message = ""
+            message = f"{self.previous_generator_message}  {self.previous_player_message}".strip()
             self.status_label.configure(text=f"Status: {message}")
 
     def _on_textbox_change(self, event=None):
@@ -384,14 +433,14 @@ class EdgeTTSUi(ctk.CTk):
     def set_ui_state(self, state: str):
         """Sets the enabled/disabled state of UI widgets based on application state."""
         is_player_ready = bool(self.app.pyglet_initialized and self.app.player)
-        is_audio_loaded = bool(is_player_ready and self.app.audio_file_path and os.path.exists(self.app.audio_file_path))
+        is_audio_loaded = bool(is_player_ready and self.app.audio_file_path)
 
 
         is_idle = not self.app.player.playing # Idle/stopped condition
 
         # Determine capabilities based on state
         can_press_play_pause = is_audio_loaded and state not in ['generating', 'loading']
-        can_skip_next = False # Todo: Implement skip next logic when chunks work
+        can_skip_next = self.app.currently_playing_file_index < len(self.app.audio_file_path)
         can_stop = is_audio_loaded
         can_seek = is_audio_loaded
         can_save = is_audio_loaded and is_idle # Can save only when idle/stopped
@@ -418,9 +467,10 @@ class EdgeTTSUi(ctk.CTk):
         next_btn_state = ctk.NORMAL if can_skip_next else ctk.DISABLED
         stop_btn_state = ctk.NORMAL if can_stop else ctk.DISABLED
         seek_btns_state = ctk.NORMAL if can_seek else ctk.DISABLED
-        progress_slider_state = ctk.NORMAL if can_seek else ctk.DISABLED
         save_btn_state = ctk.NORMAL if can_save else ctk.DISABLED
         generate_btn_state = ctk.NORMAL if can_generate else ctk.DISABLED
+        chunking_state = ctk.NORMAL if can_generate else ctk.DISABLED
+        chunking_state_label_color = "grey" if not can_generate else self.rate_value_label.cget("text_color")  # Dim label text when disabled
         load_file_btn_state = ctk.NORMAL if can_load_text else ctk.DISABLED
         voice_ctrl_state = ctk.NORMAL if voices_loaded and controls_active else ctk.DISABLED
         adj_ctrl_state = ctk.NORMAL if controls_active else ctk.DISABLED
@@ -460,6 +510,12 @@ class EdgeTTSUi(ctk.CTk):
             if hasattr(self, 'stop_btn') and self.stop_btn.winfo_exists(): self.stop_btn.configure(state=stop_btn_state)
             if hasattr(self, 'rewind_btn') and self.rewind_btn.winfo_exists(): self.rewind_btn.configure(state=seek_btns_state)
             if hasattr(self, 'forward_btn') and self.forward_btn.winfo_exists(): self.forward_btn.configure(state=seek_btns_state)
+            for widget in getattr(self, 'chunking_widgets', []):
+                if widget.winfo_exists():
+                    if isinstance(widget, ctk.CTkLabel):
+                        widget.configure(text_color=chunking_state_label_color)
+                    else:
+                        widget.configure(state=chunking_state)
         except Exception as e:
             # This might happen during shutdown if widgets are destroyed
             if "application has been destroyed" not in str(e):
@@ -541,21 +597,5 @@ class EdgeTTSUi(ctk.CTk):
             self.update_status("❌ Error: No voices could be loaded.")
             self.set_ui_state('error_no_voices') # Specific error state
 
-    def update_time_label(self, current_seconds: float, total_seconds: float):
-        """Updates the 'MM:SS / MM:SS' time label."""
-        # Ensure non-negative inputs
-        current_seconds = max(0, current_seconds if isinstance(current_seconds, (int, float)) else 0)
-        total_seconds = max(0, total_seconds if isinstance(total_seconds, (int, float)) else 0)
-        # Format times
-        current_time_str = self.format_time(current_seconds)
-        total_time_str = self.format_time(total_seconds)
 
 
-
-    @staticmethod
-    def format_time(seconds: float) -> str:
-        """Formats seconds into an MM:SS string."""
-        if not isinstance(seconds, (int, float)) or seconds < 0: seconds = 0
-        minutes = int(seconds // 60)
-        seconds = int(seconds % 60)
-        return f"{minutes:02d}:{seconds:02d}"
