@@ -3,20 +3,16 @@ from tkinter import filedialog
 
 # --- File Operations (Save audio) ---
 class AudioSaver:
-    def __init__(self, audio_file_path, ui, just_playback_initialized, player)-> None:
+    def __init__(self, audio_file_path, ui, just_playback_initialized)-> None:
         """Initializes the AudioSaver with the path to the audio file and UI instance."""
         self.audio_file_path = audio_file_path
         self.ui = ui
         self.just_playback_initialized = just_playback_initialized
-        self.player = None  # Will be set when playback is initialized
 
     def save_audio(self):
         """Opens a dialog to save the temporary audio file to a user-chosen location."""
         if not self.audio_file_path or not os.path.exists(self.audio_file_path):
              self.ui.update_status("❌ No generated audio file to save."); return
-        # Ensure playback is stopped before saving
-        if self.just_playback_initialized and self.player and (self.player.playing or self.player.paused):
-            self.ui.update_status("⚠️ Please stop playback before saving."); return
 
         try: # Create default filename from the beginning of the text
             # Use get_input_text to avoid using placeholder as filename basis

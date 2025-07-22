@@ -4,11 +4,11 @@
 import customtkinter as ctk
 
 from app import EdgeTTSApp
-from config.consts import JUST_PLAYBACK_AVAILABLE
+from config.consts import PYGLET_AVAILABLE
 # --- Execution Entry Point ---
 if __name__ == "__main__":
     # Check if just_playback is available before starting the main GUI
-    if not JUST_PLAYBACK_AVAILABLE:
+    if not PYGLET_AVAILABLE:
         # Display a simple error window if the library is missing
         error_root = ctk.CTk()
         # Set mode for the error window too

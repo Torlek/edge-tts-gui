@@ -1,9 +1,9 @@
-from threading import Thread
-from time import sleep
+
 
 import customtkinter as ctk
 import os
 
+import pyglet
 import file_utils.text_files
 from config.settings import StoredUiState
 from config.consts import SEEK_INTERVAL_SECONDS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, TEXTBOX_PLACEHOLDER_TEXT, \
@@ -17,6 +17,7 @@ class EdgeTTSUi(ctk.CTk):
         super().__init__()
         self.app = app
         self.playback_end_watcher = False
+        self.has_played =False
 
         # Placeholder state
         self.textbox_placeholder_active = False
@@ -207,15 +208,20 @@ class EdgeTTSUi(ctk.CTk):
         self.app.toggle_play_pause()  # Use app method to handle play/pause logic
         if not self.playback_end_watcher:
             self.playback_end_watcher = True
-            self.after(AUDIO_UPDATE_INTERVAL_MS, self.check_if_playback_ended)  # Start watching playback end
+            self.after(50, self._trigger_pyglet_eventloop)
 
-    def check_if_playback_ended(self):
-        if self.app.player.active:
-            self.after(AUDIO_UPDATE_INTERVAL_MS, self.check_if_playback_ended)  # Keep checking if playback is still active
-        else:
-            self.stop_audio()
+    def _trigger_pyglet_eventloop(self):
+        if self.playback_end_watcher:
+            pyglet.app.platform_event_loop.dispatch_posted_events()
+            pyglet.clock.tick()
+            if self.app.player.source:
+                self.after(50, self._trigger_pyglet_eventloop)
+            else:
+                self.stop_audio()
 
     def stop_audio(self):
+        """Stops the audio playback and resets the player state."""
+        self.has_played = False  # Reset playback state
         self.app.stop_audio()
         self.playback_end_watcher = False  # unblock future watchers
 
@@ -385,17 +391,16 @@ class EdgeTTSUi(ctk.CTk):
 
     def set_ui_state(self, state: str):
         """Sets the enabled/disabled state of UI widgets based on application state."""
-        is_player_ready = bool(self.app.just_playback_initialized and self.app.player)
-        is_audio_loaded = bool(is_player_ready and self.app.audio_file_path and os.path.exists(self.app.audio_file_path) and self.app.audio_duration > 0.001)
+        is_player_ready = bool(self.app.pyglet_initialized and self.app.player)
+        is_audio_loaded = bool(is_player_ready and self.app.audio_file_path and os.path.exists(self.app.audio_file_path))
 
-        is_playing = is_player_ready and self.app.player.playing
-        is_paused = is_player_ready and self.app.player.paused
-        is_idle = not is_playing and not is_paused # Idle/stopped condition
+
+        is_idle = not self.app.player.playing # Idle/stopped condition
 
         # Determine capabilities based on state
         can_press_play_pause = is_audio_loaded and state not in ['generating', 'loading']
-        can_stop = is_audio_loaded and (is_playing or is_paused)
-        can_seek = is_audio_loaded and (is_playing or is_paused)
+        can_stop = is_audio_loaded
+        can_seek = is_audio_loaded
         can_save = is_audio_loaded and is_idle # Can save only when idle/stopped
 
         voices_loaded = bool(self.app.voices_dict)
@@ -434,9 +439,12 @@ class EdgeTTSUi(ctk.CTk):
         elif state == 'generating': generate_btn_text = "Generating..."
         elif state == 'error_no_audio': generate_btn_text = "Audio Error"
 
+
         play_pause_text = "▶ Play"
-        if is_playing: play_pause_text = "⏸ Pause"
-        elif is_paused: play_pause_text = "▶ Resume"
+        if self.app.player.playing:
+            play_pause_text = "⏸ Pause"
+            self.has_played = True  # Mark that playback has started
+        elif self.has_played and self.app.player.source: play_pause_text= "▶ Resume"
 
         # Apply states to widgets (use try-except for safety during init)
         try:

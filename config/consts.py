@@ -3,15 +3,15 @@
 
 
 try:
-    from just_playback import Playback
-    JUST_PLAYBACK_AVAILABLE = True
+    from pyglet.media import Player
+    PYGLET_AVAILABLE = True
 except ImportError:
-    print("ERROR: Required library 'just_playback' not found. Please install it: pip install just_playback")
-    JUST_PLAYBACK_AVAILABLE = False
+    print("ERROR: Required library 'pyglet' not found. Please install it: pip install pyglet")
+    PYGLET_AVAILABLE = False
 except Exception as e:
-    # Catch other potential errors during just_playback import/initialization
-    print(f"ERROR: Failed to import or initialize just_playback: {e}")
-    JUST_PLAYBACK_AVAILABLE = False
+    # Catch other potential errors during pyglet import/initialization
+    print(f"ERROR: Failed to import or initialize pyglet: {e}")
+    PYGLET_AVAILABLE = False
 
 # --- Constants ---
 # DEFAULT_APPEARANCE_MODE = "Light" # REMOVED - Now starts with "System"

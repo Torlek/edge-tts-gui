@@ -5,10 +5,11 @@ import threading
 import time
 
 import edge_tts
-from just_playback import Playback
+from pyglet.media import load
+from pyglet.media import Player
 
 import file_utils.audio_files
-from config.consts import AUDIO_UPDATE_INTERVAL_MS, JUST_PLAYBACK_AVAILABLE
+from config.consts import AUDIO_UPDATE_INTERVAL_MS, PYGLET_AVAILABLE
 from config.settings import load_ui_state, StoredUiState, store_ui_state
 from ui.base import EdgeTTSUi
 
@@ -24,22 +25,21 @@ class EdgeTTSApp():
     def __init__(self):
         # Initialize Audio Player
 
-        self.player: Playback | None = None
-        self.just_playback_initialized: bool = False
-        if JUST_PLAYBACK_AVAILABLE:
+        self.player: Player | None = None
+        self.pyglet_initialized: bool = False
+        if PYGLET_AVAILABLE:
             try:
-                self.player = Playback()
-                self.just_playback_initialized = True
+                self.reinitialize_player()
+                self.pyglet_initialized = True
                 print("INFO: just_playback initialized successfully.")
             except Exception as e:
                 print(f"ERROR: Failed to initialize just_playback: {e}")
-                self.just_playback_initialized = False
+                self.pyglet_initialized = False
 
         # Application State
         self.voices_dict: dict[str, str] = {} # {Display Name: ShortName}
         self._all_voice_display_names: list[str] = []
         self.audio_file_path: str | None = None # Path to the temporary audio file
-        self.audio_duration: float = 0.0 # Audio duration in seconds
         self._after_id_update_progress: str | None = None # ID for the 'after' job updating progress
         self._slider_being_dragged: bool = False # Flag if user is dragging the progress slider
 
@@ -47,12 +47,17 @@ class EdgeTTSApp():
         self.ui = EdgeTTSUi(self, ui_state)
 
         # Set initial placeholder state after color fetch attempt
-        if self.just_playback_initialized:
+        if self.pyglet_initialized:
             self.ui.update_status("Loading voices...")
             self.load_voices_async(ui_state)
         else:
             self.ui.update_status("❌ Error: Audio library init failed. Audio disabled.")
             self.ui.set_ui_state('error_no_audio')
+
+
+
+    def reinitialize_player(self):
+        self.player = Player()
 
 
 
@@ -62,13 +67,11 @@ class EdgeTTSApp():
         current_state = 'idle'  # Default
         # Check if we have generated audio
         if self.audio_file_path and os.path.exists(self.audio_file_path):
-            if self.just_playback_initialized and self.player:
+            if self.pyglet_initialized and self.player:
                 if self.player.playing:
                     current_state = 'playing'
-                elif self.player.paused:
-                    current_state = 'paused'
                 else:
-                    current_state = 'generated'
+                    current_state = 'paused'
             else:
                 current_state = 'generated'
         return current_state
@@ -95,7 +98,7 @@ class EdgeTTSApp():
     def start_generate_speech_thread(self):
         """Starts a thread to generate TTS audio asynchronously."""
         self._delete_temp_audio_file() # Delete old temp file first
-        if self.just_playback_initialized and self.player and (self.player.playing or self.player.paused):
+        if self.pyglet_initialized and self.player and self.player.playing:
              self.stop_audio() # Stop playback if currently active
 
         # Use the dedicated function to get input text, ignoring placeholder
@@ -199,18 +202,18 @@ class EdgeTTSApp():
     def _on_audio_generated(self):
         """Callback on the main thread after the temporary audio file is created."""
         print(f"INFO: Loading generated audio file: {self.audio_file_path}")
-        if not self.just_playback_initialized or not self.player:
+        if not self.pyglet_initialized or not self.player:
             self.ui.update_status("❌ Error: Audio generated, but player is not ready."); self.ui.set_ui_state('error_no_audio'); return
         if not self.audio_file_path or not os.path.exists(self.audio_file_path):
              self.ui.update_status("❌ Error: Generated audio file path is invalid or missing."); self.ui.set_ui_state('idle'); return
 
         try:
             # Stop the player if it's playing something else before loading the new file
-            if self.player.playing or self.player.paused:
-                self.player.stop()
+            self.player.delete()
+            self.reinitialize_player()
 
             # Load the audio file into just_playback
-            self.player.load_file(self.audio_file_path)
+            self.player.queue(load(self.audio_file_path, streaming=False))
             # Add a small delay before getting duration, sometimes needed after load
             self.ui.after(50, self._finish_audio_load)
 
@@ -218,39 +221,26 @@ class EdgeTTSApp():
             # Catch errors during file loading *initiation* into just_playback
             print(f"ERROR: Failed to initiate loading audio file into player: {e}")
             self.ui.update_status(f"❌ Error loading audio: {e}")
-            self.audio_duration = 0
             self.ui.set_ui_state('error_audio_format')
             self._delete_temp_audio_file() # Delete the problematic file
 
 
-    def _finish_audio_load(self):
+    def _finish_audio_load(self):#todo wont work like this
         """Gets duration and updates UI after just_playback has loaded the file."""
-        if not self.just_playback_initialized or not self.player: return
+        if not self.pyglet_initialized or not self.player: return
         try:
-            self.audio_duration = self.player.duration # Get duration from the player
-            print(f"INFO: Audio file loaded. Duration: {self.audio_duration:.2f}s")
+            print(f"INFO: Audio file loaded.")
 
-            # Check if the duration is valid
-            if self.audio_duration > 0:
-                self.ui.update_status("✅ Audio generated! Press Play.")
-                self.ui.set_ui_state('generated') # State: ready to be played
-                if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
-                    self.ui.progress_slider.set(0) # Reset slider
-                self.ui.update_time_label(0, self.audio_duration) # Update time label
-                if self.ui.auto_play.get():
-                    self.ui.toggle_play_pause()
-            else:
-                # Invalid duration (0 or negative)
-                print(f"WARN: Audio file loaded but reports invalid duration ({self.audio_duration:.2f}s). File might be corrupted.")
-                self.ui.update_status("❌ Error: Audio file seems invalid (0 duration).")
-                self.ui.set_ui_state('error_audio_format') # Specific error state
-                self._delete_temp_audio_file() # Delete the invalid file
+            self.ui.update_status("✅ Audio generated! Press Play.")
+            self.ui.set_ui_state('generated') # State: ready to be played
+            self.ui.update_time_label(0, 0) # Update time label
+            if self.ui.auto_play.get():
+                self.ui.toggle_play_pause()
 
         except Exception as e:
              # Catch errors getting duration or updating UI
              print(f"ERROR: Failed to finalize audio load (get duration/update UI): {e}")
              self.ui.update_status(f"❌ Error finalizing audio load: {e}")
-             self.audio_duration = 0
              self.ui.set_ui_state('error_audio_format')
              self._delete_temp_audio_file()
 
@@ -258,10 +248,10 @@ class EdgeTTSApp():
     # --- Audio Playback Controls ---
     def toggle_play_pause(self):
         """Starts, pauses, or resumes audio playback."""
-        if not self.just_playback_initialized or not self.player:
+        if not self.pyglet_initialized or not self.player:
             self.ui.update_status("❌ Error: Audio player not ready."); return
         # Need a valid audio file and duration > 0 to play/pause
-        if not self.audio_file_path or not os.path.exists(self.audio_file_path) or self.audio_duration <= 0:
+        if not self.audio_file_path or not os.path.exists(self.audio_file_path):
             # Attempt reload if file exists but duration is invalid (maybe previous load failed)
             if self.audio_file_path and os.path.exists(self.audio_file_path):
                  print("WARN: Audio has invalid duration, attempting reload...")
@@ -277,10 +267,6 @@ class EdgeTTSApp():
                 self.player.pause()
                 self._stop_progress_updater() # Stop updates when paused
                 self.ui.set_ui_state('paused'); self.ui.update_status("⏸ Audio paused.")
-            elif self.player.paused:
-                self.player.resume()
-                self.ui.set_ui_state('playing'); self.ui.update_status("▶ Resuming audio...")
-                self._start_progress_updater() # Resume updates
             else: # If not playing/paused (i.e., stopped or initial state)
                 # Ensure seeked to start if stopped previously? just_playback usually resumes
                 # self.player.seek(0) # Optional: uncomment to always start from beginning after stop
@@ -294,17 +280,20 @@ class EdgeTTSApp():
 
     def stop_audio(self):
         """Stops audio playback and resets position to the beginning."""
-        if not self.just_playback_initialized or not self.player: return
+        if not self.pyglet_initialized or not self.player: return
+
+        self.player.delete()
+        self.reinitialize_player()
+        if self.audio_file_path:
+            self.player.queue(load(self.audio_file_path, streaming=False))
 
         # Only stop if currently playing or paused
-        if self.player.playing or self.player.paused:
+        if self.player.playing:
             try:
-                self.player.stop()
                 self._stop_progress_updater()
                 # Reset UI to initial position
                 if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
                     self.ui.progress_slider.set(0)
-                self.ui.update_time_label(0, self.audio_duration)
                 self.ui.set_ui_state('generated') # State returns to 'ready to play'
                 self.ui.update_status("⏹ Audio stopped.")
             except Exception as e:
@@ -316,108 +305,17 @@ class EdgeTTSApp():
             self._stop_progress_updater()
             if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
                  self.ui.progress_slider.set(0)
-            self.ui.update_time_label(0, self.audio_duration)
             self.ui.set_ui_state('generated')
 
     # --- Progress Update & Seeking Logic ---
-    def _start_progress_updater(self):
-        """Starts the loop for updating the progress bar and time label."""
-        self._stop_progress_updater() # Ensure any previous updater is stopped
-        # Only start if player is ready and duration is valid
-        if self.player and self.audio_duration > 0:
-             # Schedule the first call to _update_progress after a short delay
-             self._after_id_update_progress = self.ui.after(AUDIO_UPDATE_INTERVAL_MS, self._update_progress)
+    def _start_progress_updater(self):...
 
-    def _stop_progress_updater(self):
-        """Stops the progress update loop."""
-        if self._after_id_update_progress:
-            try:
-                 self.ui.after_cancel(self._after_id_update_progress)
-            except ValueError: # Can happen if ID is invalid (e.g., already cancelled)
-                 pass
-            except Exception as e:
-                 # Catch TclError if app is closing
-                 if "application has been destroyed" not in str(e):
-                      print(f"WARN: Error cancelling progress updater: {e}")
-            self._after_id_update_progress = None
+    def _stop_progress_updater(self):...
 
 
-    def pause_updates_on_drag(self, event=None):
-        """Called when the user presses the progress slider."""
-        if self._can_seek(): # Only set flag if seeking is possible
-            self._slider_being_dragged = True
-            # Optional: Could also stop the updater here if needed
-            # self._stop_progress_updater()
+    def pause_updates_on_drag(self, event=None): ...
 
-    def _update_progress(self):
-        """Method called periodically to update the progress UI."""
-        # Safety check: Stop if player is not ready or window closing
-        if not self.just_playback_initialized or not self.player or not self.ui.winfo_exists():
-            self._stop_progress_updater(); return
-
-        # Update only if playing AND the user is not dragging the slider
-        if self.player.playing and not self._slider_being_dragged:
-            try:
-                current_pos_sec = self.player.curr_pos
-                total_duration = self.audio_duration
-
-                # Ensure duration is valid before calculating percentage
-                if total_duration > 0:
-                    # Calculate progress percentage (0-100)
-                    progress_percent = min(100, max(0, (current_pos_sec / total_duration) * 100))
-
-                    # Check if slider exists before updating
-                    slider_exists = hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists()
-
-                    # Update slider UI only if the value changed significantly (reduces flicker)
-                    if slider_exists:
-                        # Use try-except for slider access as it might be destroyed during close
-                        try:
-                             current_slider_val = self.ui.progress_slider.get()
-                             if abs(current_slider_val - progress_percent) > 0.5: # 0.5% tolerance
-                                self.ui.progress_slider.set(progress_percent)
-                        except Exception as slider_e:
-                              print(f"WARN: Error accessing slider during progress update: {slider_e}")
-                              slider_exists = False # Assume slider is gone
-
-                    # Update time label
-                    self.ui.update_time_label(current_pos_sec, total_duration)
-                else:
-                    # Abnormal condition if duration is 0 while playing, stop the updater
-                    print("WARN: Invalid duration detected during progress update.")
-                    self._stop_progress_updater()
-                    if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
-                         try: self.ui.progress_slider.set(0)
-                         except: pass # Ignore errors if closing
-                    self.ui.update_time_label(0, 0)
-                    return # Do not reschedule
-
-                # Reschedule the next update call ONLY if still playing
-                # Check player state *again* as it might have finished between checks
-                if self.player.playing:
-                   # Check window exists before scheduling next 'after'
-                   if self.ui.winfo_exists():
-                        self._after_id_update_progress = self.ui.after(AUDIO_UPDATE_INTERVAL_MS, self._update_progress)
-                   else:
-                        self._after_id_update_progress = None # Window closed
-                else:
-                    # Playback finished naturally (detected by state check)
-                    print("INFO: Playback finished naturally.")
-                    self._stop_progress_updater()
-                    # Call stop_audio after a short delay to reset UI/state if window still exists
-                    if self.ui.winfo_exists():
-                         self.ui.after(50, self.stop_audio) # Increased delay slightly
-
-            except Exception as e:
-                # Catch errors during the update process
-                # Check if error is due to closing window
-                if "application has been destroyed" not in str(e) and "invalid command name" not in str(e):
-                     print(f"ERROR: Exception in progress update loop: {e}")
-                self._stop_progress_updater() # Stop updater on error
-
-        # If not playing or being dragged, ensure updater is stopped
-        elif (not self.player.playing or self._slider_being_dragged) and self._after_id_update_progress:
-             self._stop_progress_updater()
+    def _update_progress(self):...
 
 
 
@@ -427,10 +325,8 @@ class EdgeTTSApp():
     def _can_seek(self) -> bool:
         """Checks if the current conditions allow seeking."""
         # Check player state too
-        player_ready = self.just_playback_initialized and self.player and (self.player.playing or self.player.paused)
-        return (player_ready
-                and self.audio_file_path and os.path.exists(self.audio_file_path) # Check file path
-                and self.audio_duration > 0.001)
+        player_ready = self.pyglet_initialized and self.player and self.player.source is not None
+        return player_ready and self.audio_file_path and os.path.exists(self.audio_file_path) # Check file path
 
 
     def _perform_seek(self, target_seek_time_sec: float):
@@ -442,7 +338,6 @@ class EdgeTTSApp():
             self._stop_progress_updater() # Stop updater first
 
             # Clamp target time to valid duration range (allow seeking very close to end)
-            target_seek_time_sec = max(0, min(target_seek_time_sec, self.audio_duration - 0.01)) # Subtract tiny amount
 
             # Perform seek using just_playback
             self.player.seek(target_seek_time_sec)
@@ -469,7 +364,7 @@ class EdgeTTSApp():
     def seek_relative(self, seconds_to_add: int):
         """Jumps forward or backward by a specified number of seconds."""
         if not self._can_seek(): return
-        current_pos_sec = self.player.curr_pos
+        current_pos_sec = self.player.time
         target_seek_time_sec = current_pos_sec + seconds_to_add
         self._perform_seek(target_seek_time_sec) # Use the helper
 
@@ -486,30 +381,14 @@ class EdgeTTSApp():
         # Clear the flag *before* performing the seek
         self._slider_being_dragged = False
         # Calculate target time based on slider percentage
-        target_seek_time_sec = (seek_percent / 100.0) * self.audio_duration
+        target_seek_time_sec = 10
         self._perform_seek(target_seek_time_sec) # Use the helper
 
-    def _update_ui_after_seek_internal(self):
-        """Updates the slider position and time label immediately after a seek."""
-        if not self.just_playback_initialized or not self.player or not self.ui.winfo_exists(): return
-        # Update only if player is in a valid state (playing/paused)
-        if self.player.playing or self.player.paused:
-            try:
-                 current_pos = self.player.curr_pos
-                 duration = self.audio_duration
-                 self.ui.update_time_label(current_pos, duration) # Update time label
-                 if duration > 0 and hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
-                      # Update slider position
-                      percent = min(100, max(0, (current_pos / duration) * 100))
-                      self.ui.progress_slider.set(percent)
-            except Exception as e:
-                 # Catch errors during post-seek UI update
-                 if "application has been destroyed" not in str(e):
-                      print(f"ERROR: Exception updating UI after seek: {e}")
+    def _update_ui_after_seek_internal(self): ...
 
     def _maybe_restart_updater(self):
         """Checks conditions and restarts the progress updater if necessary."""
-        if not self.just_playback_initialized or not self.player or not self.ui.winfo_exists(): return
+        if not self.pyglet_initialized or not self.player or not self.ui.winfo_exists(): return
         # Restart only if: playing, NOT dragging, AND updater is not already running
         if self.player.playing and not self._slider_being_dragged and not self._after_id_update_progress:
              self._start_progress_updater()
@@ -522,16 +401,15 @@ class EdgeTTSApp():
             print(f"INFO: Preparing to delete temp file: {path_to_delete}")
             # Clear internal references *before* attempting deletion
             self.audio_file_path = None
-            self.audio_duration = 0
-
             # Stop the player if it's active and loaded this file
-            if self.just_playback_initialized and self.player and (self.player.playing or self.player.paused):
+            if self.pyglet_initialized and self.player:
                  # Check if the player's source matches the file to delete
                  # Note: just_playback doesn't directly expose the loaded file path easily.
                  # We assume if a file exists, the player *might* be using it.
                  print(f"INFO: Stopping player before attempting to delete potential source file.")
                  try:
-                     self.player.stop()
+                     self.player.delete() # Stop playback and release resources
+                     self.player = Player() # Reinitialize player to reset state
                      time.sleep(0.15) # Give OS time to release handle
                  except Exception as e:
                      # Ignore errors if player is already stopped or invalid
@@ -564,7 +442,6 @@ class EdgeTTSApp():
             # Path was already None or file didn't exist
             if self.audio_file_path: # Clear internal refs just in case
                 self.audio_file_path = None
-                self.audio_duration = 0
 
     def on_closing(self):
         store_ui_state(self.ui.voice_dropdown.get(), int(self.ui.rate_slider.get()), int(self.ui.pitch_slider.get()))
@@ -574,12 +451,10 @@ class EdgeTTSApp():
         self._stop_progress_updater() # Stop the UI update loop
 
         # Stop the player if active
-        if self.just_playback_initialized and self.player:
+        if self.pyglet_initialized and self.player:
              try:
-                  if self.player.playing or self.player.paused:
-                       print("INFO: Stopping audio playback...")
-                       self.player.stop()
-                       time.sleep(0.1) # Short pause after stopping
+                  if self.player:
+                      self.player.delete() # Stop playback and release resources
              except Exception as e:
                   # Ignore "Playback has not been initialized" error if player failed
                   if "Playback has not been initialized" not in str(e):
@@ -596,4 +471,4 @@ class EdgeTTSApp():
             self.ui.destroy() # Close the Tkinter window
 
     def save_audio(self):
-        file_utils.audio_files.AudioSaver(self.audio_file_path, self.ui, self.just_playback_initialized, self.player).save_audio()
+        file_utils.audio_files.AudioSaver(self.audio_file_path, self.ui, self.pyglet_initialized).save_audio()
