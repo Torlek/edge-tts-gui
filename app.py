@@ -18,7 +18,7 @@ from ui.base import EdgeTTSUi
 class EdgeTTSApp():
     """
     GUI application to generate Text-to-Speech using Microsoft Edge TTS
-    and play it back using the just_playback library.
+    and play it back using the pyglet library.
     Follows system theme initially, with a toggle override.
     Includes Textbox placeholder simulation.
     """
@@ -31,9 +31,9 @@ class EdgeTTSApp():
             try:
                 self.reinitialize_player()
                 self.pyglet_initialized = True
-                print("INFO: just_playback initialized successfully.")
+                print("INFO: pyglet initialized successfully.")
             except Exception as e:
-                print(f"ERROR: Failed to initialize just_playback: {e}")
+                print(f"ERROR: Failed to initialize pyglet: {e}")
                 self.pyglet_initialized = False
 
         # Application State
@@ -212,13 +212,13 @@ class EdgeTTSApp():
             self.player.delete()
             self.reinitialize_player()
 
-            # Load the audio file into just_playback
+            # Load the audio file into pyglet
             self.player.queue(load(self.audio_file_path, streaming=False))
             # Add a small delay before getting duration, sometimes needed after load
             self.ui.after(50, self._finish_audio_load)
 
         except Exception as e:
-            # Catch errors during file loading *initiation* into just_playback
+            # Catch errors during file loading *initiation* into pyglet
             print(f"ERROR: Failed to initiate loading audio file into player: {e}")
             self.ui.update_status(f"❌ Error loading audio: {e}")
             self.ui.set_ui_state('error_audio_format')
@@ -226,7 +226,7 @@ class EdgeTTSApp():
 
 
     def _finish_audio_load(self):#todo wont work like this
-        """Gets duration and updates UI after just_playback has loaded the file."""
+        """Gets duration and updates UI after pyglet has loaded the file."""
         if not self.pyglet_initialized or not self.player: return
         try:
             print(f"INFO: Audio file loaded.")
@@ -265,14 +265,12 @@ class EdgeTTSApp():
         try:
             if self.player.playing:
                 self.player.pause()
-                self._stop_progress_updater() # Stop updates when paused
                 self.ui.set_ui_state('paused'); self.ui.update_status("⏸ Audio paused.")
             else: # If not playing/paused (i.e., stopped or initial state)
-                # Ensure seeked to start if stopped previously? just_playback usually resumes
+                # Ensure seeked to start if stopped previously? pyglet usually resumes
                 # self.player.seek(0) # Optional: uncomment to always start from beginning after stop
                 self.player.play() # Start from last position (or beginning if stopped/newly loaded)
                 self.ui.set_ui_state('playing'); self.ui.update_status("▶ Playing audio...")
-                self._start_progress_updater() # Start progress updates
         except Exception as e:
             print(f"ERROR: Exception during toggle_play_pause: {e}")
             self.ui.update_status(f"❌ Playback Error: {e}")
@@ -290,7 +288,6 @@ class EdgeTTSApp():
         # Only stop if currently playing or paused
         if self.player.playing:
             try:
-                self._stop_progress_updater()
                 # Reset UI to initial position
                 if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
                     self.ui.progress_slider.set(0)
@@ -302,26 +299,11 @@ class EdgeTTSApp():
                 self.ui.set_ui_state('generated') # Still try to reset state
         else:
             # If already stopped, ensure UI is consistent
-            self._stop_progress_updater()
             if hasattr(self.ui, 'progress_slider') and self.ui.progress_slider.winfo_exists():
                  self.ui.progress_slider.set(0)
             self.ui.set_ui_state('generated')
 
-    # --- Progress Update & Seeking Logic ---
-    def _start_progress_updater(self):...
-
-    def _stop_progress_updater(self):...
-
-
-    def pause_updates_on_drag(self, event=None): ...
-
-    def _update_progress(self):...
-
-
-
-
-
-
+    # --- Seeking Logic ---
     def _can_seek(self) -> bool:
         """Checks if the current conditions allow seeking."""
         # Check player state too
@@ -334,31 +316,14 @@ class EdgeTTSApp():
         if not self._can_seek(): return # Do nothing if seeking isn't possible
 
         try:
-            was_playing = self.player.playing # Remember if it was playing before seek
-            self._stop_progress_updater() # Stop updater first
-
-            # Clamp target time to valid duration range (allow seeking very close to end)
-
-            # Perform seek using just_playback
+            # Perform seek using pyglet
             self.player.seek(target_seek_time_sec)
-
-            # Schedule immediate UI update after a short delay (allows seek to register)
-            # Ensure window exists before scheduling 'after' calls
-            if self.ui.winfo_exists():
-                 self.ui.after(30, self._update_ui_after_seek_internal)
-                 # Schedule the updater restart check only if it was playing before
-                 if was_playing:
-                     self.ui.after(80, self._maybe_restart_updater) # Slightly longer delay
-            else:
-                 print("WARN: Window closed during seek operation, skipping UI updates.")
 
         except Exception as e:
              # Catch errors during the seek operation
              print(f"ERROR: Exception during seek operation: {e}")
              self.ui.update_status(f"❌ Error seeking: {e}")
              # Still try to schedule updater restart check if it was playing
-             if self.ui.winfo_exists() and was_playing:
-                 self.ui.after(80, self._maybe_restart_updater)
 
 
     def seek_relative(self, seconds_to_add: int):
@@ -368,30 +333,8 @@ class EdgeTTSApp():
         target_seek_time_sec = current_pos_sec + seconds_to_add
         self._perform_seek(target_seek_time_sec) # Use the helper
 
-    def seek_audio_on_release(self, event=None):
-        """Called when the user releases the click on the progress slider."""
-        if not self._can_seek(): # Check if seeking is possible *before* clearing the flag
-             self._slider_being_dragged = False # Always clear flag on release
-             return
-        if not hasattr(self.ui, 'progress_slider'):
-             self._slider_being_dragged = False
-             return
 
-        seek_percent = self.ui.progress_slider.get()
-        # Clear the flag *before* performing the seek
-        self._slider_being_dragged = False
-        # Calculate target time based on slider percentage
-        target_seek_time_sec = 10
-        self._perform_seek(target_seek_time_sec) # Use the helper
 
-    def _update_ui_after_seek_internal(self): ...
-
-    def _maybe_restart_updater(self):
-        """Checks conditions and restarts the progress updater if necessary."""
-        if not self.pyglet_initialized or not self.player or not self.ui.winfo_exists(): return
-        # Restart only if: playing, NOT dragging, AND updater is not already running
-        if self.player.playing and not self._slider_being_dragged and not self._after_id_update_progress:
-             self._start_progress_updater()
 
     # --- Cleanup ---
     def _delete_temp_audio_file(self):
@@ -404,7 +347,7 @@ class EdgeTTSApp():
             # Stop the player if it's active and loaded this file
             if self.pyglet_initialized and self.player:
                  # Check if the player's source matches the file to delete
-                 # Note: just_playback doesn't directly expose the loaded file path easily.
+                 # Note: pyglet doesn't directly expose the loaded file path easily.
                  # We assume if a file exists, the player *might* be using it.
                  print(f"INFO: Stopping player before attempting to delete potential source file.")
                  try:
@@ -448,7 +391,6 @@ class EdgeTTSApp():
 
         """Called when the application window is closed."""
         print("INFO: Closing application...")
-        self._stop_progress_updater() # Stop the UI update loop
 
         # Stop the player if active
         if self.pyglet_initialized and self.player:

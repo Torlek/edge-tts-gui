@@ -190,7 +190,6 @@ class EdgeTTSUi(ctk.CTk):
         self.progress_slider.set(0)
         self.progress_slider.grid(row=0, column=4, padx=5, pady=10, sticky="ew")
         self.progress_slider.bind("<ButtonRelease-1>", app.seek_audio_on_release)  # On slider release
-        self.progress_slider.bind("<ButtonPress-1>", app.pause_updates_on_drag)  # On slider press
         self.time_label = ctk.CTkLabel(self.player_frame, text="00:00 / 00:00", width=90, font=ctk.CTkFont(size=10),
                                        anchor="e")
         self.time_label.grid(row=0, column=5, padx=(0, 10), pady=10, sticky="e")
